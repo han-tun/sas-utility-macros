@@ -1406,7 +1406,7 @@
 				%end;
 			%end;
 
-		/* v0.6 Disable deleting entire CASLIBs. The hell was I thinking? */
+		/* v0.6 Disable deleting entire CASLIBs. Noooot the best idea. */
 		/* If casout was not specified but caslib is, get the list of tables from the caslib */
 		/*				%else %if(&casout. = AND &caslib. NE) %do;*/
 		/**/
