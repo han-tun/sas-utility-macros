@@ -1,7 +1,6 @@
 /******************************************************************************\
-* Name: casload
 *
-* Author: Stu Sztukowski, SAS(r) US Professional Services
+* Name: casload.sas
 *
 * Purpose: A single-use program to automate multiple steps associated with CAS load, unload, append, promote, delete, 
 *		   and save tasks from SAS 9 or SPRE environments where the user does not have direct CASLIB access. 
@@ -11,7 +10,7 @@
 *		- Automatically convert chars into varchars; users can control the minimum required bytes for conversion
 *		- Load, promote, append, save, and delete multiple datasets in a single step
 *		- Automatically save partitions and row order when saving data
-*		- Fast Promote method: Load into a temporary CASLIB, delete old data, then promote new data – this method allows for near-seamless VA updates, but will temporarily double the amount of data used
+*		- Fast Promote method: Load into a temporary CASLIB, delete old data, then promote new data ? this method allows for near-seamless VA updates, but will temporarily double the amount of data used
 *		- Automatically save datasets to CAS for permanent data storage when promoting
 *		- Support for output dataset options
 *		- Automatically delete backing store when deleting datasets to prevent data remnants from continuing to take up disk space
@@ -30,6 +29,7 @@
 *		More information about loading data with the CASDATA statement can be found below in "Form 1:"
 *		https://go.documentation.sas.com/?docsetId=casref&docsetTarget=n03spmi9ixzq5pn11lneipfwyu8b.htm&docsetVersion=3.5&locale=en
 *
+* Author: Stu Sztukowski (stsztu)
 *
 * Parameters: data	  	     | Datasets to load or append in CAS. Multiple datasets are allowed. Separate datasets with spaces. Input dataset options are not supported.
 *			  casout  	     | Optional. One or two-level output CAS dataset names that correspond with datasets specified in the DATA option.
@@ -56,7 +56,7 @@
 *			  fastpromote	 | Optional. Load data to a temporary CASLIB, remove the old table, then promote the new table. 
 *							   This will significantly reduce VA report downtime, but will temporarily double the amount of memory usage.
 *							   Default: YES
-*			  varchar	   	 | Convert all character variables > [minvarcharlen] bytes in length to Varchar. Default: YES	  
+*			  varchar	   	 | Convert all character variables >= [minvarcharlen] bytes in length to Varchar. Default: YES	  
 *			  minvarcharlen  | Minimum bytes to convert characters to varchars. Default: 16
 *
 * Dependencies/Assumptions: 
@@ -66,14 +66,14 @@
 * Examples:
 	1. Load multiple CAS tables to a local CASUSER session
 
-		%casload(data=sashelp.cars sashelp.air sashelp.pricedata, caslib=CASUSER);
+		%util_cas_load(data=sashelp.cars sashelp.air sashelp.pricedata, caslib=CASUSER);
 
 	2. Load all datasets in a library to a local CASUSER session
-		%casload(lib=work, caslib=CASUSER);
+		%util_cas_load(lib=work, caslib=CASUSER);
 
 	3. Promote multiple CAS tables, apply partitions and orderby, and save them permanently
 
-		%casload(data=sashelp.cars
+		%util_cas_load(data=sashelp.cars
 							sashelp.pricedata
 					 , casout=casuser.cars(partition=(make) orderby=(model) )
 							  casuser.pricedata(partition=(regionname) orderby=(date) )
@@ -86,7 +86,7 @@
 				set sashelp.cars;
 			run;
 
-			%casload(data=sashelp.cars
+			%util_cas_load(data=sashelp.cars
 						 , casout=casuser.cars2
 						 , append=FORCE
 						 , varchar=NO
@@ -94,51 +94,53 @@
 
 	5. Delete a dataset in a CASLIB and remove its .sashdat file:
 
-			%casload(casout=casuser.cars, delete=yes); 
-		OR: %casload(casdata=casuser.cars, delete=yes);
+			%util_cas_load(casout=casuser.cars, delete=yes); 
+		OR: %util_cas_load(casdata=casuser.cars, delete=yes);
 
 	6. Unload a table from memory but do not delete its .sashdat file:
-			%casload(casout=casuser.cars, delete=yes, deletesource=NO);
-		OR:	%casload(casdata=casuser.cars, delete=yes, deletesource=NO);
+			%util_cas_load(casout=casuser.cars, delete=yes, deletesource=NO);
+		OR:	%util_cas_load(casdata=casuser.cars, delete=yes, deletesource=NO);
 
 	7. Apply multiple operations within a single statement:
 		a. Load and partition a CAS table
 		b. Append a CAS table
 		c. Promote a CAS table
 
-			%casload(data=sashelp.cars sashelp.air sashelp.pricedata
+			%util_cas_load(data=sashelp.cars sashelp.air sashelp.pricedata
 						 , casout=casuser.cars casuser.air(append=YES) casuser.pricedata(promote=YES)
 						  );
 *	
 *		 
-* History: 07JAN2020 Stu | v0.1 - Initial beta release
-*		   08JAN2020 Stu | v0.2 - Add option to load an entire library
-*		   28JAN2020 Stu | v0.3 - Fixed a bug that could cause datasets to not be deleted
+* History: 07JAN2020 stsztu | v0.1 - Initial beta release
+*		   08JAN2020 stsztu | v0.2 - Add option to load an entire library
+*		   28JAN2020 stsztu | v0.3 - Fixed a bug that could cause datasets to not be deleted
 *								   - Moved default lib and caslib to be after error checking statements
 *								   - Added checks if a CASLIB exists before loading and warns the user if it does not
 *								   - Added checks if a dataset exists before deleting and warns the user if it does not
 *								   - Added checks if a library is already empty before deleting and warns the user if it is
-*		   14FEB2020 Stu | v0.4 - Bug fixes
-*									- Resolved data being loaded to CASUSER if user does not specify the caslib= option
-*									- Resolved bug where casload would error out if casout options were specified
-*									- A note is no longer made in the log when unpromoted data is loaded to CAS but
-*									  save=YES
-*		   01JUN2020 Stu | v0.5 - Added fastpromote option and set it as default to yes. First loads to a temp CASLIB, 
+*		   14FEB2020 stsztu | v0.4 - Bug fixes
+*								   		- Resolved data being loaded to CASUSER if user does not specify the caslib= option
+*										- Resolved bug where util_cas_load would error out if casout options were specified
+*										- A note is no longer made in the log when unpromoted data is loaded to CAS but
+*										  save=YES
+*		   01JUN2020 stsztu | v0.5 - Added fastpromote option and set it as default to yes. First loads to a temp CASLIB, 
 *									 then promotes the table. This drastically reduces VA report downtime.
-*		   14JUL2020 Stu | v0.6 - Bug fixes.
+*		   14JUL2020 stsztu | v0.6 - Bug fixes.
 *								   - A temporary CASLIB named STAGECAS is made to load data in order to allow users to
 *									 load and promote to CASUSER if FASTPROMOTE=YES.
 *								   - Users can now specify a minimum varchar conversion length with minvarcharlen=.
 *								   - When saving, added notes that partitions and row order will be saved.
 *								   - Disabled the ability to delete entire CASLIBs. That was a silly idea.
-*		  15JUL2020 Stu  | v0.7 - Added library checks for the CAS engine: if the user specifies a non-CAS library,
+*		  15JUL2020 stsztu  | v0.7 - Added library checks for the CAS engine: if the user specifies a non-CAS library,
 *									 it will warn them that it is not assigned with the CAS engine
 *								   - Added notes on how many varchar variables were converted
 *								   - Updated warning & error text
 *								   - Fixed a bug where the program would continue to try and delete in PROC CASUTIL even if
 *									 a library or dataset did not exist
-*		  16JUL2020 Stu  | v1.0 - Initial release
-*						 	    - Add checks for version requirements
+*		  16JUL2020 stsztu  | v1.0 - Initial release
+*								   - Add checks for version requirements
+*		  30JUL2020 stsztu	| v1.01 - Fixed a bug where mindelimiter was not being specified as a space automatically
+*		  06AUG2020 stsztu  | v1.02 - Fixed a bug where notes would say vars were converted to varchar even if the user specified varchar=NO
 \******************************************************************************/
 
 %macro casload
@@ -158,7 +160,8 @@
    , varchar=YES	  /*Optional. Convert all character variables > [minvarcharlen] bytes in length to Varchar. Default: YES*/
    , minvarcharlen=16 /*Optional. Minimum bytes to convert characters to varchars. Default: 16*/
     )
-	/ minoperator;
+	/ minoperator
+	  mindelimiter=' '
 	;
  
 	%local i j error;
@@ -169,7 +172,6 @@
 	/***** Basic error checks *****/
 	/* Stop immediately if basic conditions are not met */
 
-	/* Check if the user is running a CAS session and abort if not */
 	options nonotes;
 
 	/* Check minimum version requirements */
@@ -262,7 +264,7 @@
 		run;
 
 		proc datasets lib=work nolist nowarn;
-			delete ___casload_:
+			delete ___util_cas_load_:
 			;
 		quit;
 		
@@ -282,11 +284,6 @@
 
 		options &noteoptions. &syntaxcheckoptions.;
 	%mend cleanup;
-
-	/* Trims leading/trailing spaces, multiple spaces, removes spaces between data options.
-	   Example: data(option1 = a option2 = (a b c) )
-			->  data(option1=a option2=(a b c))
-	*/
 		
 	/* Modified from: https://blogs.sas.com/content/sasdummy/2013/06/04/find-a-sas-library-engine/ */
 	%macro getEngine(libref);
@@ -304,6 +301,10 @@
 		&engine.
 	%mend getEngine;
 
+	/* Trims leading/trailing spaces, multiple spaces, removes spaces between data options.
+	   Example: data(option1 = a option2 = (a b c) )
+			->  data(option1=a option2=(a b c))
+	*/
 	%macro cleanDataOptions(string, dlm=%str( ));
 		%local i token open_parentheses close_parentheses remaining_parentheses;
 
@@ -372,9 +373,9 @@
 					/* This handles when we are between datasets
 					   dataset1(option1=a option2=(a b c))|dataset2|dataset3
 
-					3. We are not within an option set
-					4. We are not within a sub-option set
-					5. The previous token is (, ), or = and the next token is alphanumeric OR;
+					1. We are not within an option set
+					2. We are not within a sub-option set
+					3. The previous token is (, ), or = and the next token is alphanumeric OR;
 					   The previous and next tokens are alphanumeric
 					*/
 
@@ -393,7 +394,7 @@
 	/* Check if a user has input valid arguments and generate a user-friendly statement if
 	   they have not. Default is to output an error and abort.
 	*/
-	%macro checkValidArgs(option=, args=, type=ERROR, action=ABORT, case=NO) / minoperator;
+	%macro checkValidArgs(option=, args=, type=ERROR, action=ABORT, case=NO) / minoperator mindelimiter=' ';
 		%local i n_args;
 
 		/* Upcase options */
@@ -411,7 +412,8 @@
 
 		/* Only allow notes, warnings, or errors */
 		%if(%eval(&type. IN NOTE WARNING ERROR) = 0) %then %do;
-			%put ERROR: type= in checkValidArgs can only be ERROR, WARNING, or NOTE.;
+			%put ERROR: Invalid type= in checkValidArgs can only be ERROR, WARNING, or NOTE.;
+			%put ERROR: Invalid argument to argument validator.;
 			%put WARNING: Irony detected;
 			%abort;
 		%end;
@@ -521,7 +523,7 @@
 
 					%let j = %eval(&j.+1);
 
-					%if(&j. > 5000) %then %do;
+					%if(&j. > 65535) %then %do;
 						%put ERROR: Infinite loop detected in getOptionArgs. This should not happen. Contact developer.;
 						%abort;
 					%end;
@@ -664,9 +666,10 @@
 			select count(*)
 				 , cats(libname, '.', memname)
 			into :nword_data
-			   , :data
+			   , :data separated by ' '
 			from dictionary.members
-			where 	   library = "&lib."
+			where 	   libname = "&lib."
+				   AND memtype = 'DATA'
 				   AND NOT missing(memname)	/* This can happen sometimes */
 			order by memname
 			;
@@ -806,7 +809,7 @@
 
 	%if(&delete. = NO) %then %do;
 
-		data ___casload_tmp___;
+		data ___util_cas_load_tmp___;
 				
 			length data    		$40. 
 				   lib	 		$8.
@@ -898,7 +901,7 @@
 			call symputx('nword_data', nword_data);
 			call symputx('n_promote', n_promote);
 			call symputx('n_append', n_append);
-			call symputx('n_new', n_promote - n_append);
+			call symputx('n_new', nword_data - n_append);
 
  			drop i nword_data lib_dsn _: n_promote n_append; 
 		run;
@@ -912,10 +915,10 @@
 
 		/* Get the actual caslib name in case the caslib and sas libname statements do not match */
 		proc sql noprint;
-			create table ___casload_args___ as
+			create table ___util_cas_load_args___ as
 				select t1.*
 					 , t2.caslib
-				from ___casload_tmp___ as t1
+				from ___util_cas_load_tmp___ as t1
 				LEFT JOIN
 				(select upcase(libname) as libname
 					  , sysvalue 		as caslib
@@ -954,7 +957,7 @@
 			   , :orderby_dlm 	  separated by '|'
 			   , :promote_dlm	  separated by '|'
 			   , :append_dlm	  separated by '|'
-			from ___casload_args___
+			from ___util_cas_load_args___
 			;
 
 		/* Quote all delimited lists */
@@ -972,7 +975,7 @@
 
 		/* Get variable length and order. Convert any chars > 16 in length to varchars */
 		proc sql noprint;
-			create table ___casload_attribs___ as
+			create table ___util_cas_load_attribs___ as
 				select memname
 					 , libname
 					 , name
@@ -986,7 +989,7 @@
 					   END as label
 				from dictionary.columns 	  as t1
 				INNER JOIN
-					 ___casload_args___ as t2
+					 ___util_cas_load_args___ as t2
 				ON 	   t1.libname = t2.lib
 				   AND t1.memname = t2.dsn
 				where t1.libname IN(&lib_dlmc.)
@@ -1003,21 +1006,21 @@
 
 		options notes;
 
-		%if(&n_append. = 1)  %then %put NOTE: Appending &n_append. dataset to tables loaded in CAS.;
-			%if(&n_append. > 1)  %then %put NOTE: Appending &n_append. datasets to tables loaded in CAS.;
-
 		%if(&n_new. = 1) 	 %then %put NOTE: Loading &n_new. dataset into CAS.;
 			%if(&n_new. > 1) 	 %then %put NOTE: Loading &n_new. datasets into CAS.;
 
 		%if(&n_promote. = 1) %then %put NOTE: Promoting &n_promote. dataset.;
 			%else %if(&n_promote. > 1) %then %put NOTE: Promoting &n_promote. datasets.;
 
-		%if(&fastpromote. = YES AND &n_promote. > 0) %then %put NOTE: The fast promote method will be used.;
+		%if(&n_append. = 1)  %then %put NOTE: Appending &n_append. dataset to tables loaded in CAS.;
+			%if(&n_append. > 1)  %then %put NOTE: Appending &n_append. datasets to tables loaded in CAS.;
 
-		%put;
+		%if(&fastpromote. = YES AND &n_promote. > 0) %then %put NOTE: The fast promote method will be used.;
 	
 		%if(&save. = YES AND &n_promote. = 1) %then %put NOTE: The promoted dataset will be saved to disk in .sashdat format.;
 			%if(&save. = YES AND &n_promote. > 1) %then %put NOTE: All promoted datasets will be saved to disk in .sashdat format.;
+
+		%put %str( );
 
 		/* Final output for each dataset */
 		%do i = 1 %to &nword_data.;
@@ -1094,7 +1097,7 @@
 					into :lengths separated by ' '
 					   , :attribs separated by ' '
 					   , :varnames separated by '|'
-					from ___casload_attribs___
+					from ___util_cas_load_attribs___
 					where 	 memname = "&dsn."
 						 AND libname = "&lib."
 					order by varnum
@@ -1114,11 +1117,11 @@
 					   , :varchars separated by ' ' 
 					   , :renamechars separated by ' '
 					   , :renamestatement separated by ' '
-					from ___casload_attribs___
+					from ___util_cas_load_attribs___
 					where 	 memname = "&dsn."
 						 AND libname = "&lib."
 						 AND type	 = 'char'
-						 AND length > &minvarcharlen.
+						 AND length GE &minvarcharlen.
 					;
 				quit;
 	
@@ -1159,13 +1162,15 @@
 				*/
 				%if(&ds_append. NE NO) %then %do;
 					%put NOTE: &lib..&dsn. will be appended to &outcaslibname..&casdsn.;
-	
+					%put %str( );
+
 					%let outcaslibname = STAGECAS;
-					%let casout    	   = %scan(&dataset., 2, .);
+					%let casout    	   = &dsn.;
 	
-					%put NOTE: STAGE 1: Loading &lib..&dsn. to STAGECAS.;
+					%put NOTE: STEP 1: Loading &lib..&dsn. to STAGECAS.;
 				%end;
-					%else %put NOTE: Loading &casdsn. to &outcaslibname..;
+					%else %if(&dsn. = &casdsn.) %then %put NOTE: Loading &lib..&dsn to &outcaslibname..;
+						%else %put NOTE: Loading &lib..&dsn. to &outcaslibname. as &casdsn..;
 	
 				/* Fastpromote: Load to STAGECAS first, then promote it to the final caslib */
 				%if(&fastpromote. = YES AND &ds_promote. = YES) %then %let outcaslibname = STAGECAS;
@@ -1178,7 +1183,7 @@
 				   Otherwise: 	 caslib = &caslib
 								 casout = &casout
 				*/
-	
+
 				data &outcaslibname..&casout.;
 					&lengths.;
 					&attribs.;
@@ -1211,12 +1216,21 @@
 						%put NOTE: &outcaslibname..&dsn. was ordered by (&orderby.).
 					;
 			
-					%if(&nvarchars. = 1) %then  
+					%if(&nvarchars. = 1 AND &varchar. = YES) %then  
 						%put NOTE: %cmpres(&nvarchars.) CHAR was automatically converted to VARCHAR.
 					;
-						%else %if(&nvarchars. > 1) %then
+						%else %if(&nvarchars. > 1 AND &varchar. = YES) %then
 							%put NOTE: %cmpres(&nvarchars.) CHARS were automatically converted to VARCHARS.
 						;
+
+					/* Add a space to help separate it from the next data step */
+					%if( &partition. NE _NOPARTITION_
+					  OR &orderby. NE _NOORDERBY_
+					  OR (&nvarchars. > 1 AND &varchar. = YES)
+					  OR (&nvarchars. = 1 AND &varchar. = YES)
+					  )
+					%then %put %str( );
+
 				%end;
 					%else %put ERROR: Could not load &lib..&dsn..;
 
@@ -1293,6 +1307,8 @@
 						%let partition     = %scan(&partition_dlm., &i., |);
 						%let orderby       = %scan(&orderby_dlm, &i., |);
 
+						%put %str( );
+
 		 			 	%if(%getEngine(&outcaslibname.) = CAS AND %sysfunc(libref(&outcaslibname.)) = 0) %then %do;
 
 							%put NOTE: Saving &outcaslibname..&casdsn. to disk in .sashdat format.;
@@ -1342,7 +1358,7 @@
 		%else %do;
 
 			/* Get the list of datasets to delete */
-			data ___casload_tmp___;
+			data ___util_cas_load_tmp___;
 				do i = 1 to &nword_casout_dlm.;
 					_casout  = scan("&casout_dlm.", i, '|');
 					caslibname = upcase("&caslib.");
@@ -1370,7 +1386,7 @@
 				   , :casdsn_dlm separated by '|'
 				   , :caslib_dlm separated by '|'
 				   , :caslibname_dlm separated by '|'
-				from ___casload_tmp___ as t1
+				from ___util_cas_load_tmp___ as t1
 			  	LEFT JOIN
 					(select upcase(libname) as libname
 						  , sysvalue 		as caslib
@@ -1392,7 +1408,7 @@
 				into :nword_casout_dlm_all
 				   , :casdsn_dlm_all separated by '|'
 				   , :caslibname_dlm_all separated by '|'
-				from ___casload_tmp___
+				from ___util_cas_load_tmp___
 				;
 			quit;
 
@@ -1406,7 +1422,7 @@
 				%end;
 			%end;
 
-		/* v0.6 Disable deleting entire CASLIBs. Noooot the best idea. */
+		/* v0.6 Disable deleting entire CASLIBs. What was I thinking? */
 		/* If casout was not specified but caslib is, get the list of tables from the caslib */
 		/*				%else %if(&casout. = AND &caslib. NE) %do;*/
 		/**/
@@ -1458,6 +1474,8 @@
 						%let caslib 	= %qscan(&caslib_dlm., &i, |);
 						%let caslibname = %qscan(&caslibname_dlm., &i., |);
 
+						%put %str( );
+
 						%if(&deletesource. = NO) %then %put NOTE: Dropping &caslibname..&casdsn. from memory.;
 							%else %put NOTE: Dropping &caslibname..&casdsn. from memory and deleting %lowcase(&casdsn.).sashdat from disk.;
 							
@@ -1488,4 +1506,4 @@
 		%end;
 	
 	%cleanup;
-%mend casload;
+%mend casLoad;
